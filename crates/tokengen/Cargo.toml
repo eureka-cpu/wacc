@@ -9,4 +9,4 @@ license.workspace = true
 derive-token = { path = "../derive-token" }
 
 [dev-dependencies]
-expect-test = "1.5.1"
+expect-test.workspace = true

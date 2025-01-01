@@ -2,7 +2,7 @@
 name = "wacc"
 
 [workspace.package]
-description = "writing a c compiler"
+description = "compiler and driver crates for 'writing a c compiler'"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
@@ -10,3 +10,6 @@ license = "MIT"
 [workspace]
 resolver = "2"
 members = ["crates/*"]
+
+[workspace.dependencies]
+expect-test = "1.5.1"
