@@ -125,6 +125,7 @@
           gcc
           gdb
           python39
+          mdbook
         ];
       };
 

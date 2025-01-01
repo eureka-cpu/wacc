@@ -1,0 +1,6 @@
+[book]
+authors = ["eureka-cpu"]
+language = "en"
+multilingual = false
+src = "src"
+title = "Writing a C Compiler"
