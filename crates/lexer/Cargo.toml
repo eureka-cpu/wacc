@@ -1,0 +1,12 @@
+[package]
+name = "wacc-lexer"
+description = "lexer for 'writing a c compiler'"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tokengen = { path = "../tokengen" }
+
+[dev-dependencies]
+expect-test = "1.5.1"

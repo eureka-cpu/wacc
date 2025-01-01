@@ -1,0 +1,12 @@
+[package]
+name = "tokengen"
+description = "minimal and concise token generation library"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+derive-token = { path = "../derive-token" }
+
+[dev-dependencies]
+expect-test = "1.5.1"

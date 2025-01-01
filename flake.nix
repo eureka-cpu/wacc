@@ -60,50 +60,102 @@
 
       cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
-      my-crate = craneLib.buildPackage (commonArgs // {
+      individualCrateArgs = commonArgs // {
         inherit cargoArtifacts;
+        inherit (craneLib.crateNameFromCargoToml { inherit src; }) version;
+        doCheck = false;
+      };
+
+      fileSetForCrate = crate: deps: lib.fileset.toSource {
+        root = ./.;
+        fileset = lib.fileset.unions ([
+          ./Cargo.toml
+          ./Cargo.lock
+          (craneLib.fileset.commonCargoSources crate)
+        ] ++ deps);
+      };
+
+      wacc = craneLib.buildPackage (individualCrateArgs // {
+        pname = "wacc";
+        cargoExtraArgs = "-p wacc-driver";
+        src = fileSetForCrate ./crates/driver [ ];
+      });
+      wacc-lexer = craneLib.buildPackage (individualCrateArgs // {
+        pname = "wacc-lexer";
+        cargoExtraArgs = "-p wacc-lexer";
+        src = fileSetForCrate ./crates/lexer [
+          ./crates/derive-token
+          ./crates/tokengen
+        ];
       });
     in
     {
       checks = {
-        inherit my-crate;
+        inherit wacc wacc-lexer;
 
-        my-crate-clippy = craneLib.cargoClippy (commonArgs // {
+        clippy = craneLib.cargoClippy (commonArgs // {
           inherit cargoArtifacts;
           cargoClippyExtraArgs = "--all-targets -- --deny warnings";
         });
 
-        my-crate-fmt = craneLib.cargoFmt {
+        fmt = craneLib.cargoFmt {
           inherit src;
         };
 
-        my-crate-toml-fmt = craneLib.taploFmt {
+        toml-fmt = craneLib.taploFmt {
           src = lib.sources.sourceFilesBySuffices src [ ".toml" ];
         };
 
-        my-crate-nextest = craneLib.cargoNextest (commonArgs // {
+        nextest = craneLib.cargoNextest (commonArgs // {
           inherit cargoArtifacts;
           partitions = 1;
           partitionType = "count";
         });
+
+        # TODO: Uncomment if compile times get too long
+        # hakari = craneLib.mkCargoDerivation {
+        #   inherit src;
+        #   pname = "hakari";
+        #   cargoArtifacts = null;
+        #   doInstallCargoArtifacts = false;
+
+        #   buildPhaseCargoCommand = ''
+        #     cargo hakari generate --diff  # workspace-hack Cargo.toml is up-to-date
+        #     cargo hakari manage-deps --dry-run  # all workspace crates depend on workspace-hack
+        #     cargo hakari verify
+        #   '';
+
+        #   nativeBuildInputs = [
+        #     pkgs.cargo-hakari
+        #   ];
+        # };
       };
 
       packages = {
-        default = my-crate;
+        inherit wacc;
+        default = wacc;
       } // lib.optionalAttrs (!pkgs.stdenv.isDarwin) {
         my-crate-llvm-coverage = craneLibLLvmTools.cargoLlvmCov (commonArgs // {
           inherit cargoArtifacts;
         });
       };
 
-      apps.default = flake-utils.lib.mkApp {
-        drv = my-crate;
+      apps = {
+        wacc = flake-utils.lib.mkApp {
+          drv = wacc;
+        };
+        default = flake-utils.lib.mkApp {
+          drv = wacc;
+        };
       };
 
       devShells.default = craneLib.devShell {
         checks = self.checks.${system};
 
         packages = with pkgs; [
+          nil
+          nixpkgs-fmt
+
           gcc
           gdb
           python39
