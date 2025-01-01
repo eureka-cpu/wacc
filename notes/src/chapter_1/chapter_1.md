@@ -22,3 +22,13 @@ gcc return_2.s -o return_2
 echo $?
 ```
 I had to `chmod +x return_2` and run it again because the output was 0 instead of 2 (probably it didn't execute?). It returned 2 after adding executable permissions.
+
+## Questions
+
+Q. I'm sort of confused while going through the compiler driver portion on pages 7 and 8.
+I got through most of it, but the part which describes the `--lex`, `--parse` and `--codegen` options
+is sort of vague, in that I'm not exactly sure how the options will be used _in the code_ at this point
+but the pages leading up to this made it seem as if it's important I know this already.
+For example, sure, `--lex` is a `bool` that allows the `test_compiler` script to tell the compiler driver
+to lex only, then stop. But lex what? Where is this option being passed, to my yet-to-be-written compiler or gcc?
+
