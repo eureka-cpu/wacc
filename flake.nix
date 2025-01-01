@@ -147,5 +147,7 @@
             # pkgs.ripgrep
           ];
         };
+
+        formatter = pkgs.nixpkgs-fmt;
       });
 }
