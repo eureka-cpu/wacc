@@ -1,5 +1,5 @@
-use crate::span::{SourceSpan, Span};
-use derive_token::{Delimiter, Token};
+use crate::span::Span;
+use derive_token::Token;
 
 pub trait Token: Copy {}
 
@@ -28,17 +28,21 @@ impl<T: Token> Default for TokenStream<T> {
 /// be passed as a list for convenience, but is subject to change.
 /// Additional derive traits can optionally be added at the end to extend
 /// functionality without the need of explicit impl blocks.
+#[macro_export]
 macro_rules! symbol {
     ( $([$name:ident, $char:literal $(,[$($alias:ident),*]),* $(,{$($trait:ident),*})* ]),+ ) => {
         $(
+            #[allow(dead_code)] // Ignore warnings if alias is never used
             $($(pub type $alias<'a> = $name<'a>;)*)*
+
             #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord $(,$($trait,)*)*)]
             pub struct $name<'a> {
-                span: $crate::token::SourceSpan<'a>,
+                span: $crate::span::SourceSpan<'a>,
             }
             impl<'a> $name<'a> {
+                #[allow(dead_code)] // Ignore warnings if type is never constructed with `$name::new`
                 pub fn new(src: &'a str, start: usize, end: usize) -> Self {
-                    Self { span: $crate::token::SourceSpan::new(src, start, end) }
+                    Self { span: $crate::span::SourceSpan::new(src, start, end) }
                 }
             }
             impl<'a> $crate::token::Span for $name<'a> {
@@ -89,51 +93,19 @@ macro_rules! symbol {
         }
     };
 }
-symbol!(
-    [Colon, ':'],
-    [Semicolon, ';'],
-    [Period, '.'],
-    [Comma, ','],
-    [ExclamationMark, '!', [Bang]],
-    [QuestionMark, '?'],
-    [PoundSign, '#', [Hash]],
-    [DollarSign, '$'],
-    [AtSign, '@'],
-    [Asterisk, '*'],
-    [Ampersand, '&'],
-    [Percent, '%', { Delimiter }],
-    [Hyphen, '-', [MinusSign, Dash]],
-    [Underscore, '_'],
-    [PlusSign, '+'],
-    [EqualSign, '='],
-    [OpenSquareBracket, '[', { Delimiter }],
-    [ClosedSquareBracket, ']', { Delimiter }],
-    [OpenCurlyBrace, '{', { Delimiter }],
-    [ClosedCurlyBrace, '}', { Delimiter }],
-    [OpenParenthesis, '(', { Delimiter }],
-    [ClosedParenthesis, ')', { Delimiter }],
-    [Pipe, '|'],
-    [ForwardSlash, '/'],
-    [BackSlash, '\\'],
-    [Backtick, '`', { Delimiter }],
-    [SingleQuotation, '\'', [Apostrophe], { Delimiter }],
-    [DoubleQuotation, '\"', { Delimiter }]
-);
-
-/// More than once symbol concatenated together, forming a specific identifier.
-pub trait CookedSymbol {
-    /// The symbols that a cooked symbol is made from.
-    const SYMBOLS: &'static [Symbol];
-    /// The symbols that a cooked symbol is made from.
-    fn symbols() -> &'static [Symbol];
-}
 
 /// A cooked symbol is two or more symbols that together form a specific identifier.
-/// These should be declared within each languages `token` module to avoid
-/// improper use and keep things organized.
 #[macro_export]
 macro_rules! cooked_symbol {
-    ( $([$name:ident, [$($symbol:ident),+] $(,{$($trait:ident),*})* ]),+ ) => {
+    ( $symbol:ty, $([$name:ident, [$($variant:ident),+] $(,{$($trait:ident),*})* ]),+ ) => {
+        /// More than one symbol concatenated together.
+        pub trait CookedSymbol {
+            /// The symbols that a cooked symbol is made from.
+            const SYMBOLS: &'static [$symbol];
+
+            /// The symbols that a cooked symbol is made from.
+            fn symbols() -> &'static [$symbol];
+        }
         $(
             #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
             pub struct $name<'a> {
@@ -161,15 +133,15 @@ macro_rules! cooked_symbol {
                     self.span.len()
                 }
             }
-            impl<'a> $crate::token::CookedSymbol for $name<'a> {
-                const SYMBOLS: &'static [$crate::token::Symbol] = &[$($crate::token::Symbol::$symbol,)+];
-                fn symbols() -> &'static [$crate::token::Symbol] {
+            impl<'a> CookedSymbol for $name<'a> {
+                const SYMBOLS: &'static [$symbol] = &[$(<$symbol>::$variant,)+];
+                fn symbols() -> &'static [$symbol] {
                     Self::SYMBOLS
                 }
             }
             impl<'a> std::fmt::Display for $name<'a> {
                 fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                    Ok(<Self as $crate::token::CookedSymbol>::symbols()
+                    Ok(<Self as CookedSymbol>::symbols()
                         .iter()
                         .for_each(|symbol| write!(f, "{symbol}")
                         .expect("failed to format cooked symbol.")))
@@ -181,8 +153,6 @@ macro_rules! cooked_symbol {
 
 /// A keyword is some string identifier that is reserved for the language
 /// in order to establish patterns that can be used in conjunction with `Symbol`s.
-/// These should be declared within each languages `token` module to avoid
-/// improper use and keep things organized.
 #[macro_export]
 macro_rules! keyword {
     ( $([$name:ident, $str:literal]),+ ) => {
@@ -308,14 +278,22 @@ where
 #[cfg(test)]
 mod token_tests {
     //! Tests for asserting that the macros expand as expected.
-    //! This does not use the lexer and just constructs the types/spans directly.
-    use super::{CookedSymbol, DelimitedToken, Symbol, Token};
+
+    use super::{DelimitedToken, Delimiter, Token};
     use crate::span::Span;
+    use derive_token::Delimiter;
     use expect_test::{expect, Expect};
 
     #[derive(Debug, Copy, Clone)]
     struct DummyToken;
     impl Token for DummyToken {}
+
+    symbol!(
+        [ExclamationMark, '!', [Bang]],
+        [PoundSign, '#', [Hash]],
+        [OpenParenthesis, '(', { Delimiter }],
+        [ClosedParenthesis, ')', { Delimiter }]
+    );
 
     fn check_spans<S: Span + std::fmt::Debug>(output: S, expect: Expect) {
         expect.assert_eq(&format!("{output:#?}"));
@@ -323,9 +301,7 @@ mod token_tests {
 
     #[test]
     fn test_symbol() {
-        symbol!([Hash, '#']);
-
-        let symbol = Symbol::Hash;
+        let symbol = Symbol::PoundSign;
         let symbol_str = symbol.as_ref().to_string();
         let src = r#"# Hello, World!"#;
         let hash = Hash::new(src, 0, symbol_str.len());
@@ -335,7 +311,7 @@ mod token_tests {
         check_spans(
             hash,
             expect![[r##"
-            Hash {
+            PoundSign {
                 span: SourceSpan {
                     src: "# Hello, World!",
                     start: 0,
@@ -347,7 +323,7 @@ mod token_tests {
 
     #[test]
     fn test_cooked_symbol() {
-        cooked_symbol!([Shebang, [PoundSign, ExclamationMark]]);
+        cooked_symbol!(Symbol, [Shebang, [PoundSign, ExclamationMark]]);
 
         let symbols = [Symbol::PoundSign, Symbol::ExclamationMark];
         let symbol_str = symbols.iter().map(|s| s.as_ref()).collect::<String>();
@@ -401,8 +377,8 @@ mod token_tests {
         let open_str = Symbol::OpenParenthesis.as_ref().to_string();
         let close_str = Symbol::ClosedParenthesis.as_ref().to_string();
         let src = r#"()"#;
-        let open = super::OpenParenthesis::new(src, 0, open_str.len());
-        let close = super::ClosedParenthesis::new(src, open.end(), open.end() + close_str.len());
+        let open = OpenParenthesis::new(src, 0, open_str.len());
+        let close = ClosedParenthesis::new(src, open.end(), open.end() + close_str.len());
         let delimited_token = DelimitedToken::new(Some(open), None::<DummyToken>, Some(close));
 
         assert_eq!(open_str.len(), delimited_token.open().unwrap().len());
