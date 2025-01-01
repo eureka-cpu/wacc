@@ -14,11 +14,6 @@
 
     flake-utils.url = "github:numtide/flake-utils";
 
-    advisory-db = {
-      url = "github:rustsec/advisory-db";
-      flake = false;
-    };
-
     nix-core = {
       url = "github:Cloud-Scythe-Labs/nix-core";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -32,7 +27,6 @@
     , crane
     , fenix
     , flake-utils
-    , advisory-db
     , nix-core
     , ...
     }:
@@ -79,24 +73,12 @@
           cargoClippyExtraArgs = "--all-targets -- --deny warnings";
         });
 
-        my-crate-doc = craneLib.cargoDoc (commonArgs // {
-          inherit cargoArtifacts;
-        });
-
         my-crate-fmt = craneLib.cargoFmt {
           inherit src;
         };
 
         my-crate-toml-fmt = craneLib.taploFmt {
           src = lib.sources.sourceFilesBySuffices src [ ".toml" ];
-        };
-
-        my-crate-audit = craneLib.cargoAudit {
-          inherit src advisory-db;
-        };
-
-        my-crate-deny = craneLib.cargoDeny {
-          inherit src;
         };
 
         my-crate-nextest = craneLib.cargoNextest (commonArgs // {
