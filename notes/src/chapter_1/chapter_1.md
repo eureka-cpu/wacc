@@ -11,6 +11,16 @@ or even better just make the compiler compatible with aarch64 instructions.
 
 I switched to an x86_64-linux laptop after pushing to a new repo, cloned it and ran `nix develop`, checked against the book's setup checker and I'm good to go.
 
+## Lexer
+
+Ok, so I finished my lexer according to the spec in the book, in Rust. It said to trim whitespace and use a match expression combined with regex to collect tokens.
+I don't really like that at all if I'm being honest, so I made a small compromise. To retain the spans I just use a mutable counter to track the current position,
+and the `regex` crate combined with generative macros for pattern matching. I still think this looks pretty bad, but I'm not sure how to make it better using regex.
+I hope the book offers other solutions, but if not I'll have a look through some other lexers and try to come up with a better solution. This one just feels sort of
+overly verbose, and wasteful of cycles. I do feel proud of what's there though, because matching on regex isn't supported natively in rust, and I was able to find a
+way around it using macros. I also feel a bit disappointed in the way I collected the tokens, I was really hoping I could use a `Token` trait object to avoid using
+extra enums.
+
 ## Problems
 
 - `return_2` doesn't execute
