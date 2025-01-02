@@ -1,14 +1,17 @@
-use crate::span::Span;
+use std::fmt::Debug;
+
+use crate::span::{SourceSpan, Span};
 use derive_token::Token;
 
-pub trait Token: Copy {}
+pub trait Token: Copy + Clone + Debug + Sized {}
 
 // TODO: Maybe make this a recursive data structure?
 #[derive(Debug)]
 pub struct TokenStream<T: Token>(Vec<T>);
 impl<T: Token> TokenStream<T> {
-    pub fn new() -> Self {
-        Self(Vec::with_capacity(50))
+    /// Create a new token stream from the length of the source to avoid reallocations
+    pub fn new(capacity: usize) -> Self {
+        Self(Vec::with_capacity(capacity))
     }
     pub fn push(&mut self, token: T) {
         self.0.push(token)
@@ -16,10 +19,11 @@ impl<T: Token> TokenStream<T> {
     pub fn pop(&mut self) -> Option<T> {
         self.0.pop()
     }
-}
-impl<T: Token> Default for TokenStream<T> {
-    fn default() -> Self {
-        Self::new()
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 }
 
@@ -35,17 +39,19 @@ macro_rules! symbol {
             #[allow(dead_code)] // Ignore warnings if alias is never used
             $($(pub type $alias<'a> = $name<'a>;)*)*
 
-            #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord $(,$($trait,)*)*)]
+            #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Token $(,$($trait,)*)*)]
             pub struct $name<'a> {
                 span: $crate::span::SourceSpan<'a>,
             }
             impl<'a> $name<'a> {
-                #[allow(dead_code)] // Ignore warnings if type is never constructed with `$name::new`
+                pub const STATIC_REF: &'static char = &$char;
+
+                #[allow(dead_code)] // Ignore warnings if constructor is never used
                 pub fn new(src: &'a str, start: usize, end: usize) -> Self {
                     Self { span: $crate::span::SourceSpan::new(src, start, end) }
                 }
             }
-            impl<'a> $crate::token::Span for $name<'a> {
+            impl<'a> $crate::span::Span for $name<'a> {
                 fn src(&self) -> &str {
                     self.span.src()
                 }
@@ -73,95 +79,39 @@ macro_rules! symbol {
                 }
             }
         )+
+        #[allow(dead_code)]
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-        pub enum Symbol {
-            $($name,)+
+        pub enum Symbol<'a> {
+            $($name($name<'a>),)+
         }
-        impl AsRef<char> for Symbol {
+        impl AsRef<char> for Symbol<'_> {
             fn as_ref(&self) -> &char {
                 match self {
-                    $(Self::$name => &$char,)+
+                    $(Self::$name(_) => $name::STATIC_REF,)+
                 }
             }
         }
-        impl std::fmt::Display for Symbol {
+        impl std::fmt::Display for Symbol<'_> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self {
-                    $(Self::$name => write!(f, "{}", self.as_ref()),)+
+                    $(Self::$name(_) => write!(f, "{}", self.as_ref()),)+
                 }
             }
         }
     };
 }
 
-/// A cooked symbol is two or more symbols that together form a specific identifier.
-#[macro_export]
-macro_rules! cooked_symbol {
-    ( $symbol:ty, $([$name:ident, [$($variant:ident),+] $(,{$($trait:ident),*})* ]),+ ) => {
-        /// More than one symbol concatenated together.
-        pub trait CookedSymbol {
-            /// The symbols that a cooked symbol is made from.
-            const SYMBOLS: &'static [$symbol];
-
-            /// The symbols that a cooked symbol is made from.
-            fn symbols() -> &'static [$symbol];
-        }
-        $(
-            #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-            pub struct $name<'a> {
-                span: $crate::span::SourceSpan<'a>,
-            }
-            impl<'a> $name<'a> {
-                pub fn new(src: &'a str, start: usize, end: usize) -> Self {
-                    Self { span: $crate::span::SourceSpan::new(src, start, end) }
-                }
-            }
-            impl<'a> $crate::span::Span for $name<'a> {
-                fn src(&self) -> &str {
-                    self.span.src()
-                }
-                fn start(&self) -> usize {
-                    self.span.start()
-                }
-                fn end(&self) -> usize {
-                    self.span.end()
-                }
-                fn span(&self) -> &str {
-                    self.span.span()
-                }
-                fn len(&self) -> usize {
-                    self.span.len()
-                }
-            }
-            impl<'a> CookedSymbol for $name<'a> {
-                const SYMBOLS: &'static [$symbol] = &[$(<$symbol>::$variant,)+];
-                fn symbols() -> &'static [$symbol] {
-                    Self::SYMBOLS
-                }
-            }
-            impl<'a> std::fmt::Display for $name<'a> {
-                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                    Ok(<Self as CookedSymbol>::symbols()
-                        .iter()
-                        .for_each(|symbol| write!(f, "{symbol}")
-                        .expect("failed to format cooked symbol.")))
-                }
-            }
-        )+
-    };
-}
-
-/// A keyword is some string identifier that is reserved for the language
-/// in order to establish patterns that can be used in conjunction with `Symbol`s.
+/// A keyword is some string that is reserved for a language
 #[macro_export]
 macro_rules! keyword {
     ( $([$name:ident, $str:literal]),+ ) => {
         $(
-            #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+            #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Token)]
             pub struct $name<'a> {
                 span: $crate::span::SourceSpan<'a>,
             }
             impl<'a> $name<'a> {
+                pub const STATIC_REF: &'static str = $str;
                 pub fn new(src: &'a str, start: usize, end: usize) -> Self {
                     Self { span: $crate::span::SourceSpan::new(src, start, end) }
                 }
@@ -194,30 +144,61 @@ macro_rules! keyword {
                 }
             }
         )+
+        #[allow(dead_code)]
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-        pub enum Keyword {
-            $($name,)+
+        pub enum Keyword<'a> {
+            $($name($name<'a>),)+
         }
-        impl AsRef<str> for Keyword {
+        impl AsRef<str> for Keyword<'_> {
             fn as_ref(&self) -> &str {
                 match self {
-                    $(Self::$name => $str,)+
+                    $(Self::$name(_) => $name::STATIC_REF,)+
                 }
             }
         }
-        impl std::fmt::Display for Keyword {
+        impl std::fmt::Display for Keyword<'_> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self {
-                    $(Self::$name => write!(f, "{}", self.as_ref()),)+
+                    $(Self::$name(_) => write!(f, "{}", self.as_ref()),)+
                 }
             }
         }
     };
 }
 
-/// Denotes that a [`Symbol`] or [`CookedSymbol`] is also classified as a potential [`Delimiter`].
-pub trait Delimiter: Copy + Span {}
+/// An identifier is the name used to uniquely identify variables, functions, classes, modules, or other user-defined entities
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Token)]
+pub struct Ident<'a> {
+    span: SourceSpan<'a>,
+}
+impl<'a> Ident<'a> {
+    pub fn new(src: &'a str, start: usize, end: usize) -> Self {
+        Self {
+            span: SourceSpan::new(src, start, end),
+        }
+    }
+}
+impl Span for Ident<'_> {
+    fn src(&self) -> &str {
+        self.span.src()
+    }
+    fn start(&self) -> usize {
+        self.span.start()
+    }
+    fn end(&self) -> usize {
+        self.span.end()
+    }
+    fn span(&self) -> &str {
+        self.span.span()
+    }
+    fn len(&self) -> usize {
+        self.span.len()
+    }
+}
 
+// TODO: Delimited items probably don't belong here, maybe just in the AST.
+/// Denotes that a [`Symbol`] or [`CookedSymbol`] is also classified as a potential [`Delimiter`].
+pub trait Delimiter: Copy + Clone + Debug + Span {}
 /// A [`Token`] delimited by some [`Symbol`] or [`CookedSymbol`].
 //
 /// Delimiters are `Option` since we should try to recover if parsing fails.
@@ -294,6 +275,7 @@ mod token_tests {
         [OpenParenthesis, '(', { Delimiter }],
         [ClosedParenthesis, ')', { Delimiter }]
     );
+    keyword!([If, "if"]);
 
     fn check_spans<S: Span + std::fmt::Debug>(output: S, expect: Expect) {
         expect.assert_eq(&format!("{output:#?}"));
@@ -301,8 +283,7 @@ mod token_tests {
 
     #[test]
     fn test_symbol() {
-        let symbol = Symbol::PoundSign;
-        let symbol_str = symbol.as_ref().to_string();
+        let symbol_str = PoundSign::STATIC_REF.to_string();
         let src = r#"# Hello, World!"#;
         let hash = Hash::new(src, 0, symbol_str.len());
 
@@ -322,37 +303,8 @@ mod token_tests {
     }
 
     #[test]
-    fn test_cooked_symbol() {
-        cooked_symbol!(Symbol, [Shebang, [PoundSign, ExclamationMark]]);
-
-        let symbols = [Symbol::PoundSign, Symbol::ExclamationMark];
-        let symbol_str = symbols.iter().map(|s| s.as_ref()).collect::<String>();
-        let src = r#"#! /bin/bash"#;
-        let shebang = Shebang::new(src, 0, symbol_str.len());
-
-        assert_eq!(symbols, Shebang::symbols());
-        assert_eq!(symbol_str.len(), shebang.len());
-        assert_eq!(symbol_str, format!("{shebang}"));
-        assert_eq!(symbol_str, shebang.span());
-        check_spans(
-            shebang,
-            expect![[r##"
-            Shebang {
-                span: SourceSpan {
-                    src: "#! /bin/bash",
-                    start: 0,
-                    end: 2,
-                },
-            }"##]],
-        );
-    }
-
-    #[test]
     fn test_keyword() {
-        keyword!([If, "if"]);
-
-        let keyword = Keyword::If;
-        let keyword_str = keyword.as_ref();
+        let keyword_str = If::STATIC_REF;
         let src = r#"if [ ! -e "$1" ]; then"#;
         let if_keyword = If::new(src, 0, keyword_str.len());
 
@@ -374,8 +326,8 @@ mod token_tests {
 
     #[test]
     fn test_delimiter() {
-        let open_str = Symbol::OpenParenthesis.as_ref().to_string();
-        let close_str = Symbol::ClosedParenthesis.as_ref().to_string();
+        let open_str = OpenParenthesis::STATIC_REF.to_string();
+        let close_str = ClosedParenthesis::STATIC_REF.to_string();
         let src = r#"()"#;
         let open = OpenParenthesis::new(src, 0, open_str.len());
         let close = ClosedParenthesis::new(src, open.end(), open.end() + close_str.len());

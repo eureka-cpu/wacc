@@ -11,6 +11,9 @@ pub trait Span {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
 pub struct SourceSpan<'a> {
+    // TODO: maybe just have `span` take T: AsRef<str>
+    // instead of putting src as a reference on every
+    // instance of SourceSpan
     src: &'a str,
     start: usize,
     end: usize,
