@@ -28,7 +28,12 @@ pub struct Command {
 struct WaccCommand;
 impl WaccCommand {
     /// Compile the preprocessed source file and output an assembly file with a .s extension.
-    fn compile(preprocessed_file: &str) -> Result<String> {
+    fn compile(preprocessed_file: &str, lex: bool, _parse: bool, _codegen: bool) -> Result<String> {
+        if lex {
+            let source_str = fs::read_to_string(preprocessed_file)?;
+            Lexer::lex::<CToken>(&source_str, String::lex_c);
+        }
+
         let (assembly_file, _ext) = preprocessed_file
             .rsplit_once('.')
             .expect("expected a valid filename");
@@ -106,8 +111,8 @@ fn main() -> Result<()> {
     let Command {
         c_source_file,
         lex,
-        parse: _,
-        codegen: _,
+        parse,
+        codegen,
     } = Command::parse();
 
     if !path::Path::new(&c_source_file).exists() {
@@ -115,16 +120,12 @@ fn main() -> Result<()> {
         process::exit(1);
     }
 
-    if lex {
-        let source_str = fs::read_to_string(&c_source_file)?;
-        let output = Lexer::lex::<CToken>(&source_str, String::lex_c);
-        dbg!(output);
-        return Ok(());
-    }
-
-    GccCommand::assemble(&WaccCommand::compile(&GccCommand::preprocess(
-        &c_source_file,
-    )?)?)
+    GccCommand::assemble(&WaccCommand::compile(
+        &GccCommand::preprocess(&c_source_file)?,
+        lex,
+        parse,
+        codegen,
+    )?)
 }
 
 #[test]
