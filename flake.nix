@@ -78,7 +78,11 @@
       wacc = craneLib.buildPackage (individualCrateArgs // {
         pname = "wacc";
         cargoExtraArgs = "-p wacc-driver";
-        src = fileSetForCrate ./crates/driver [ ];
+        src = fileSetForCrate ./crates/driver [
+          ./crates/lexer
+          ./crates/derive-token
+          ./crates/tokengen
+        ];
       });
       wacc-lexer = craneLib.buildPackage (individualCrateArgs // {
         pname = "wacc-lexer";
