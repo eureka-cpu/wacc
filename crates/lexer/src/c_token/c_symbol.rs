@@ -1,7 +1,7 @@
 use tokengen::{token::Token, Token};
 
-pub type Operator<'a> = Symbol<'a>;
-pub type Punctuator<'a> = Symbol<'a>;
+pub type Operator = Symbol;
+pub type Punctuator = Symbol;
 
 tokengen::symbol!(
     [OpenParenthesis, '('],

@@ -3,23 +3,28 @@ use tokengen::{span::SourceSpan, token::Token, Token};
 pub mod c_keyword;
 pub mod c_symbol;
 
-#[derive(Debug, Copy, Clone, Token)]
-pub enum CToken<'a> {
-    Keyword(c_keyword::Keyword<'a>),
-    Operator(c_symbol::Operator<'a>),
-    Punctuator(c_symbol::Punctuator<'a>),
-    Identifier(tokengen::token::Ident<'a>),
-    Constant(Constant<'a>),
+#[derive(Debug, Copy, Clone, Token, PartialEq, Eq)]
+pub enum CToken {
+    Keyword(c_keyword::Keyword),
+    Operator(c_symbol::Operator),
+    Punctuator(c_symbol::Punctuator),
+    Identifier(tokengen::token::Ident),
+    Constant(Constant),
     Whitespace,
 }
-
-#[derive(Debug, Copy, Clone, Token)]
-pub struct Constant<'a> {
-    #[allow(dead_code)]
-    span: SourceSpan<'a>,
+impl CToken {
+    pub fn is_whitespace(&self) -> bool {
+        self == &Self::Whitespace
+    }
 }
-impl<'a> Constant<'a> {
-    pub fn new(src: &'a str, start: usize, end: usize) -> Self {
+
+#[derive(Debug, Copy, Clone, Token, PartialEq, Eq)]
+pub struct Constant {
+    #[allow(dead_code)]
+    span: SourceSpan,
+}
+impl Constant {
+    pub fn new(src: &str, start: usize, end: usize) -> Self {
         Self {
             span: SourceSpan::new(src, start, end),
         }
@@ -27,24 +32,34 @@ impl<'a> Constant<'a> {
 }
 
 #[macro_export]
-macro_rules! lex_ctokens {
-    ($src:expr, $pos:expr, $token_stream:expr, {
-        $($token_kind:ident => $pattern:expr => {
-            $closure:expr
-        }),*
+macro_rules! match_regex {
+    ($src:expr, $pos:expr, $token_stream:expr, $errors:expr, {
+        $($pattern:expr => {$closure:expr}),* $(,)?
     }) => {{
-        $(
-            if let Some(mat) = regex::Regex::new($pattern)
-                .expect(&format!("failed to create regex from pattern: {}", $pattern))
-                .find_at($src, $pos)
-            {
+        use once_cell::sync::Lazy;
+        use regex::Regex;
+
+        static REGEX_PATTERNS_AND_CLOSURES: Lazy<Vec<(Regex, fn(&str, usize, usize) -> Result<CToken, LexError>)>> = Lazy::new(|| vec![
+            $(
+                (
+                    Regex::new($pattern).expect(&format!("failed to create regex from pattern: {}", $pattern)),
+                    $closure,
+                ),
+            )*
+        ]);
+
+        for (regex, closure) in REGEX_PATTERNS_AND_CLOSURES.iter() {
+            if let Some(mat) = regex.find_at($src, $pos) {
                 if $pos == mat.start() {
-                    if $pattern != r"\s" {
-                        $token_stream.push($closure($src, mat.start(), mat.end()));
+                    match closure($src, mat.start(), mat.end()) {
+                        Ok(ctoken) if !ctoken.is_whitespace() => $token_stream.push(ctoken),
+                        Err(err) => $errors.push(err),
+                        _ => {}
                     }
                     $pos = mat.end();
+                    break;
                 }
             }
-        )*
+        }
     }};
 }

@@ -32,6 +32,7 @@ impl WaccCommand {
         if lex {
             let source_str = fs::read_to_string(preprocessed_file)?;
             Lexer::lex::<CToken>(&source_str, String::lex_c);
+            process::exit(0);
         }
 
         let (assembly_file, _ext) = preprocessed_file

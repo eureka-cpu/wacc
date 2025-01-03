@@ -11,6 +11,53 @@ use crate::c_token::CToken;
 
 pub mod c_token;
 
+pub struct ErrorEmitter<E>
+where
+    E: std::error::Error,
+{
+    state: Vec<E>,
+}
+impl<E> ErrorEmitter<E>
+where
+    E: std::error::Error,
+{
+    pub fn new() -> Self {
+        Self { state: Vec::new() }
+    }
+    pub fn push(&mut self, err: E) {
+        self.state.push(err);
+    }
+    pub fn report_errors(self) {
+        if !self.state.is_empty() {
+            self.state.iter().for_each(|e| eprintln!("Error: {e:?}\n"));
+            std::process::exit(1);
+        }
+    }
+}
+impl<E> Default for ErrorEmitter<E>
+where
+    E: std::error::Error,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("Error: {context}:\n{source}", source = span.span())]
+pub struct LexError {
+    span: SourceSpan,
+    context: String,
+}
+impl LexError {
+    pub fn new(src: &str, start: usize, end: usize, context: &str) -> Self {
+        Self {
+            span: SourceSpan::new(src, start, end),
+            context: context.into(),
+        }
+    }
+}
+
 pub trait Lexable: AsRef<str> + Sized {}
 impl<T: AsRef<str> + Sized> Lexable for T {}
 
@@ -22,63 +69,71 @@ pub trait Lexer: Lexable {
     {
         f(self.as_ref())
     }
-    fn lex_c<'a>(src: &'a str) -> TokenStream<CToken<'a>> {
+    fn lex_c(src: &str) -> TokenStream<CToken> {
+        let mut error_emitter = ErrorEmitter::default();
         let mut pos = 0_usize;
         let mut token_stream = TokenStream::new(src.len());
         while pos < src.len() {
-            lex_ctokens!(src, pos, token_stream, {
-                Whitespace => r"\s" => {
-                    |_src: &'a str, _start: usize, _end: usize| -> CToken<'a> {
-                        CToken::Whitespace
+            match_regex!(src, pos, token_stream, error_emitter, {
+                r"\s" => {
+                    |_, _, _| -> Result<CToken, LexError> {
+                        Ok(CToken::Whitespace)
                     }
                 },
-                Identifier => r"[a-zA-Z_]\w*\b" => {
-                    |src: &'a str, start: usize, end: usize| -> CToken<'a> {
+                r"[a-zA-Z_]\w*\b" => {
+                    |src: &str, start: usize, end: usize| -> Result<CToken, LexError> {
                         let raw = SourceSpan::new(src, start, end);
-                        match raw.span() {
+                        Ok(match raw.span() {
                             "int" => CToken::Keyword(Keyword::Int(Int::new(src, start, end))),
                             "void" => CToken::Keyword(Keyword::Void(Void::new(src, start, end))),
                             "return" => CToken::Keyword(Keyword::Return(Return::new(src, start, end))),
                             _ => CToken::Identifier(Ident::new(src, start, end)),
-                        }
+                        })
                     }
                 },
-                Constant => r"[0-9]+\b" => {
-                    |src: &'a str, start: usize, end: usize| -> CToken<'a> {
-                        CToken::Constant(c_token::Constant::new(src, start, end))
+                r"[0-9]+\b" => {
+                    |src: &str, start: usize, end: usize| -> Result<CToken, LexError> {
+                        Ok(CToken::Constant(c_token::Constant::new(src, start, end)))
                     }
                 },
-                Punctuator => r"\(" => {
-                    |src: &'a str, start: usize, end: usize| -> CToken<'a> {
-                        CToken::Punctuator(c_token::c_symbol::Symbol::OpenParenthesis(OpenParenthesis::new(src, start, end)))
+                r"\(" => {
+                    |src: &str, start: usize, end: usize| -> Result<CToken, LexError> {
+                        Ok(CToken::Punctuator(c_token::c_symbol::Symbol::OpenParenthesis(OpenParenthesis::new(src, start, end))))
                     }
                 },
-                Punctuator => r"\)" => {
-                    |src: &'a str, start: usize, end: usize| -> CToken<'a> {
-                        CToken::Punctuator(c_token::c_symbol::Symbol::CloseParenthesis(CloseParenthesis::new(src, start, end)))
+                r"\)" => {
+                    |src: &str, start: usize, end: usize| -> Result<CToken, LexError> {
+                        Ok(CToken::Punctuator(c_token::c_symbol::Symbol::CloseParenthesis(CloseParenthesis::new(src, start, end))))
                     }
                 },
-                Punctuator => r"\{" => {
-                    |src: &'a str, start: usize, end: usize| -> CToken<'a> {
-                        CToken::Punctuator(c_token::c_symbol::Symbol::OpenCurlyBrace(OpenCurlyBrace::new(src, start, end)))
+                r"\{" => {
+                    |src: &str, start: usize, end: usize| -> Result<CToken, LexError> {
+                        Ok(CToken::Punctuator(c_token::c_symbol::Symbol::OpenCurlyBrace(OpenCurlyBrace::new(src, start, end))))
                     }
                 },
-                Punctuator => r"\}" => {
-                    |src: &'a str, start: usize, end: usize| -> CToken<'a> {
-                        CToken::Punctuator(c_token::c_symbol::Symbol::CloseCurlyBrace(CloseCurlyBrace::new(src, start, end)))
+                r"\}" => {
+                    |src: &str, start: usize, end: usize| -> Result<CToken, LexError> {
+                        Ok(CToken::Punctuator(c_token::c_symbol::Symbol::CloseCurlyBrace(CloseCurlyBrace::new(src, start, end))))
                     }
                 },
-                Punctuator => r"\;" => {
-                    |src: &'a str, start: usize, end: usize| -> CToken<'a> {
-                        CToken::Punctuator(c_token::c_symbol::Symbol::Semicolon(Semicolon::new(src, start, end)))
+                r"\;" => {
+                    |src: &str, start: usize, end: usize| -> Result<CToken, LexError> {
+                        Ok(CToken::Punctuator(c_token::c_symbol::Symbol::Semicolon(Semicolon::new(src, start, end))))
                     }
-                }
+                },
+                r"." => {
+                    |src: &str, start: usize, end: usize| -> Result<CToken, LexError> {
+                        Err(LexError::new(src, start, end, "Unrecognized token"))
+                    }
+                },
             });
         }
 
         if token_stream.is_empty() {
-            panic!("token stream is empty");
+            eprintln!("token stream is empty");
+            std::process::exit(1);
         }
+        error_emitter.report_errors();
 
         token_stream
     }
@@ -125,7 +180,7 @@ mod lexer_tests {
                             Int(
                                 Int {
                                     span: SourceSpan {
-                                        src: "\n            int main(void) {\n              return 2;\n            }\n        ",
+                                        src: "int",
                                         start: 13,
                                         end: 16,
                                     },
@@ -135,7 +190,7 @@ mod lexer_tests {
                         Identifier(
                             Ident {
                                 span: SourceSpan {
-                                    src: "\n            int main(void) {\n              return 2;\n            }\n        ",
+                                    src: "main",
                                     start: 17,
                                     end: 21,
                                 },
@@ -145,7 +200,7 @@ mod lexer_tests {
                             OpenParenthesis(
                                 OpenParenthesis {
                                     span: SourceSpan {
-                                        src: "\n            int main(void) {\n              return 2;\n            }\n        ",
+                                        src: "(",
                                         start: 21,
                                         end: 22,
                                     },
@@ -156,7 +211,7 @@ mod lexer_tests {
                             Void(
                                 Void {
                                     span: SourceSpan {
-                                        src: "\n            int main(void) {\n              return 2;\n            }\n        ",
+                                        src: "void",
                                         start: 22,
                                         end: 26,
                                     },
@@ -167,7 +222,7 @@ mod lexer_tests {
                             CloseParenthesis(
                                 CloseParenthesis {
                                     span: SourceSpan {
-                                        src: "\n            int main(void) {\n              return 2;\n            }\n        ",
+                                        src: ")",
                                         start: 26,
                                         end: 27,
                                     },
@@ -178,7 +233,7 @@ mod lexer_tests {
                             OpenCurlyBrace(
                                 OpenCurlyBrace {
                                     span: SourceSpan {
-                                        src: "\n            int main(void) {\n              return 2;\n            }\n        ",
+                                        src: "{",
                                         start: 28,
                                         end: 29,
                                     },
@@ -189,7 +244,7 @@ mod lexer_tests {
                             Return(
                                 Return {
                                     span: SourceSpan {
-                                        src: "\n            int main(void) {\n              return 2;\n            }\n        ",
+                                        src: "return",
                                         start: 44,
                                         end: 50,
                                     },
@@ -199,7 +254,7 @@ mod lexer_tests {
                         Constant(
                             Constant {
                                 span: SourceSpan {
-                                    src: "\n            int main(void) {\n              return 2;\n            }\n        ",
+                                    src: "2",
                                     start: 51,
                                     end: 52,
                                 },
@@ -209,7 +264,7 @@ mod lexer_tests {
                             Semicolon(
                                 Semicolon {
                                     span: SourceSpan {
-                                        src: "\n            int main(void) {\n              return 2;\n            }\n        ",
+                                        src: ";",
                                         start: 52,
                                         end: 53,
                                     },
@@ -220,7 +275,7 @@ mod lexer_tests {
                             CloseCurlyBrace(
                                 CloseCurlyBrace {
                                     span: SourceSpan {
-                                        src: "\n            int main(void) {\n              return 2;\n            }\n        ",
+                                        src: "}",
                                         start: 66,
                                         end: 67,
                                     },
