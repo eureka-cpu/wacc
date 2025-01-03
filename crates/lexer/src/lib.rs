@@ -76,6 +76,10 @@ pub trait Lexer: Lexable {
             });
         }
 
+        if token_stream.is_empty() {
+            panic!("token stream is empty");
+        }
+
         token_stream
     }
 }

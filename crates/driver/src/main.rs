@@ -2,6 +2,7 @@ use std::{fs, path, process};
 
 use anyhow::Result;
 use clap::{ArgGroup, Parser};
+use wacc_lexer::{c_token::CToken, Lexer};
 
 #[derive(Parser)]
 #[command(
@@ -104,7 +105,7 @@ impl GccCommand {
 fn main() -> Result<()> {
     let Command {
         c_source_file,
-        lex: _,
+        lex,
         parse: _,
         codegen: _,
     } = Command::parse();
@@ -112,6 +113,13 @@ fn main() -> Result<()> {
     if !path::Path::new(&c_source_file).exists() {
         eprintln!("file not found: {c_source_file}");
         process::exit(1);
+    }
+
+    if lex {
+        let source_str = fs::read_to_string(&c_source_file)?;
+        let output = Lexer::lex::<CToken>(&source_str, String::lex_c);
+        dbg!(output);
+        return Ok(());
     }
 
     GccCommand::assemble(&WaccCommand::compile(&GccCommand::preprocess(

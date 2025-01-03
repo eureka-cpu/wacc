@@ -12,3 +12,4 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1.0.95"
 clap = { version = "4.5.23", features = ["derive"] }
+wacc-lexer = { path = "../lexer" }
