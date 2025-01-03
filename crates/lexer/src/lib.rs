@@ -1,8 +1,11 @@
 use c_token::{
-    c_keyword::{Int, Return, Void},
+    c_keyword::{Int, Keyword, Return, Void},
     c_symbol::{CloseCurlyBrace, CloseParenthesis, OpenCurlyBrace, OpenParenthesis, Semicolon},
 };
-use tokengen::token::{Ident, Token, TokenStream};
+use tokengen::{
+    span::{SourceSpan, Span},
+    token::{Ident, Token, TokenStream},
+};
 
 use crate::c_token::CToken;
 
@@ -31,27 +34,18 @@ pub trait Lexer: Lexable {
                 },
                 Identifier => r"[a-zA-Z_]\w*\b" => {
                     |src: &'a str, start: usize, end: usize| -> CToken<'a> {
-                        CToken::Identifier(Ident::new(src, start, end))
+                        let raw = SourceSpan::new(src, start, end);
+                        match raw.span() {
+                            "int" => CToken::Keyword(Keyword::Int(Int::new(src, start, end))),
+                            "void" => CToken::Keyword(Keyword::Void(Void::new(src, start, end))),
+                            "return" => CToken::Keyword(Keyword::Return(Return::new(src, start, end))),
+                            _ => CToken::Identifier(Ident::new(src, start, end)),
+                        }
                     }
                 },
                 Constant => r"[0-9]+\b" => {
                     |src: &'a str, start: usize, end: usize| -> CToken<'a> {
                         CToken::Constant(c_token::Constant::new(src, start, end))
-                    }
-                },
-                Keyword => r"int\b" => {
-                    |src: &'a str, start: usize, end: usize| -> CToken<'a> {
-                        CToken::Keyword(c_token::c_keyword::Keyword::Int(Int::new(src, start, end)))
-                    }
-                },
-                Keyword => r"void\b" => {
-                    |src: &'a str, start: usize, end: usize| -> CToken<'a> {
-                        CToken::Keyword(c_token::c_keyword::Keyword::Void(Void::new(src, start, end)))
-                    }
-                },
-                Keyword => r"return\b" => {
-                    |src: &'a str, start: usize, end: usize| -> CToken<'a> {
-                        CToken::Keyword(c_token::c_keyword::Keyword::Return(Return::new(src, start, end)))
                     }
                 },
                 Punctuator => r"\(" => {
@@ -123,14 +117,16 @@ mod lexer_tests {
             expect![[r#"
                 TokenStream(
                     [
-                        Identifier(
-                            Ident {
-                                span: SourceSpan {
-                                    src: "\n            int main(void) {\n              return 2;\n            }\n        ",
-                                    start: 13,
-                                    end: 16,
+                        Keyword(
+                            Int(
+                                Int {
+                                    span: SourceSpan {
+                                        src: "\n            int main(void) {\n              return 2;\n            }\n        ",
+                                        start: 13,
+                                        end: 16,
+                                    },
                                 },
-                            },
+                            ),
                         ),
                         Identifier(
                             Ident {
@@ -152,14 +148,16 @@ mod lexer_tests {
                                 },
                             ),
                         ),
-                        Identifier(
-                            Ident {
-                                span: SourceSpan {
-                                    src: "\n            int main(void) {\n              return 2;\n            }\n        ",
-                                    start: 22,
-                                    end: 26,
+                        Keyword(
+                            Void(
+                                Void {
+                                    span: SourceSpan {
+                                        src: "\n            int main(void) {\n              return 2;\n            }\n        ",
+                                        start: 22,
+                                        end: 26,
+                                    },
                                 },
-                            },
+                            ),
                         ),
                         Punctuator(
                             CloseParenthesis(
@@ -183,14 +181,16 @@ mod lexer_tests {
                                 },
                             ),
                         ),
-                        Identifier(
-                            Ident {
-                                span: SourceSpan {
-                                    src: "\n            int main(void) {\n              return 2;\n            }\n        ",
-                                    start: 44,
-                                    end: 50,
+                        Keyword(
+                            Return(
+                                Return {
+                                    span: SourceSpan {
+                                        src: "\n            int main(void) {\n              return 2;\n            }\n        ",
+                                        start: 44,
+                                        end: 50,
+                                    },
                                 },
-                            },
+                            ),
                         ),
                         Constant(
                             Constant {
